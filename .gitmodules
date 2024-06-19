@@ -1,0 +1,3 @@
+[submodule "TextGraphs17-shared-task"]
+	path = TextGraphs17-shared-task
+	url = https://github.com/uhh-lt/TextGraphs17-shared-task.git
