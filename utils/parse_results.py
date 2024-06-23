@@ -42,11 +42,11 @@ def parse(preds, df, greedy=True, report=False):
 
 
 if __name__ == "__main__":
-    df_file_path = "TextGraphs17-shared-task/data/tsv/test.tsv"
-    pred_file_path = "llama_70B_test_ds_ws.csv"
+    df_file_path = "TextGraphs17-shared-task/data/tsv/train.tsv"
+    pred_file_path = "output/llama_70B_train_ds_new_ws.tsv"
     
     df = pd.read_csv(df_file_path, sep="\t")
     preds = pd.read_csv(pred_file_path, sep="\t")
     
-    submit = parse(preds, df)
-    submit.to_csv("submission.tsv", index=False, sep="\t")
+    submit = parse(preds, df, report=True)
+    # submit.to_csv("output/submission.tsv", index=False, sep="\t")

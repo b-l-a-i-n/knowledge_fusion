@@ -14,16 +14,16 @@ Options:
 """
 
 
-def get_context(ds, include_graph=False, include_description=True, use_web_search=True):
+def get_context(df, include_graph=False, include_description=True, use_web_search=True):
     additional_context = ""
     if use_web_search:
-        search_results = row["web_search"].iloc[0]
+        search_results = df["web_search"].iloc[0]
         additional_context += f"\nBelow are the facts that might be relevant to answer the question:\n{search_results}"
         additional_context += "\nIf there is no relevant fact, rely on your knowledge or choose a more likely option."
         
     decode_dict = {}
-    items = zip(ds['answerEntity'], ds['answerEntityId'], ds["linearized_graph"], ds["description"], ds["sample_id"])
-    message = PROMPT.format(question=row["question"].iloc[0], additional_context=additional_context)
+    items = zip(df['answerEntity'], df['answerEntityId'], df["linearized_graph"], df["description"], df["sample_id"])
+    message = PROMPT.format(question=df["question"].iloc[0], additional_context=additional_context)
     for idx, (answer, wiki_id, graph, description, sample_id) in enumerate(items):
         decode_dict[idx] = sample_id
         data = {"answer": answer, "WikiDataID": wiki_id}
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     # Load web search results
     id2ws = {}
-    ws_df = pd.read_csv("data/web_search_results_ddgo.csv", index_col=0)
+    ws_df = pd.read_csv("data/ddgo_search_results_new.csv", index_col=0)
     for idx, row in ws_df.iterrows():
         id2ws[row["question"]] = row["web_search_response"]
 
@@ -152,4 +152,4 @@ if __name__ == "__main__":
     for key in data_frames:
         df = data_frames[key]
         pred = test(df)
-        pred.to_csv(f"llama_70B_{key}_ds_ws.tsv", sep="\t", index=False)
+        pred.to_csv(f"output/llama_70B_{key}_ds_new_ws.tsv", sep="\t", index=False)
