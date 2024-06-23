@@ -148,8 +148,8 @@ if __name__ == "__main__":
         df["description"] = df["answerEntityId"].apply(lambda x: id2d[x])
         df["linearized_graph"] = df["graph"]  # .progress_apply(linearize_graph)
 
-    # Prediction
+    # Make predictions
     for key in data_frames:
         df = data_frames[key]
         pred = test(df)
-        pred.to_csv(f"llama_70B_{key}_ds_ws.csv")
+        pred.to_csv(f"llama_70B_{key}_ds_ws.tsv", sep="\t", index=False)
