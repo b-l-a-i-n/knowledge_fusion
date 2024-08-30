@@ -21,7 +21,7 @@ def get_answers(text):
     return [int(m) for m in matches] if matches else []
 
 
-def process_ensemble(preds_list, metric):
+def process_ensemble(preds_list, metric, comparator):
     combined_preds = preds_list[0].copy()
     combined_preds["top_tokens"] = []
 
@@ -29,7 +29,7 @@ def process_ensemble(preds_list, metric):
         top_tokens = [preds[][i] for preds in preds_list]
         metric_values = [preds[metric][i] for preds in preds_list]
         
-        best_metric_index = np.argmin(metric_values)
+        best_metric_index = comparator(metric_values)
         best_token = top_tokens[best_metric_index]
 
         combined_preds.at[i, "top_tokens"] = top_tokens
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "output/llama_70B_train_sample_ds_tg_probs.tsv"
     ]
     preds_list = [init_preds(pd.read_csv(p, sep="\t"), func=metric_func) for p in preds_paths]
-    combined_preds = process_ensemble(preds_list, metric=metric_func.__name__)
+    combined_preds = process_ensemble(preds_list, metric=metric_func.__name__, comparator=np.argmax)
     
     main_df = pd.read_csv("TextGraphs17-shared-task/data/tsv/train_sample.tsv", sep="\t")
     res = evaluate_prediction(combined_preds, main_df, True)
