@@ -19,7 +19,6 @@ def evaluate_prediction(preds, df, report=False):
         for _, id in row["match_dict"].items():
             new_df["sample_id"].append(id)
             new_df["prediction"].append(id in row["prediction_sample_id"])
-            new_df["type"].append(types[k])
 
     result = pd.DataFrame(data=new_df)
     result = result.sort_values(by=["sample_id"])

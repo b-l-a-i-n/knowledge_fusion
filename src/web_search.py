@@ -12,14 +12,14 @@ def search_api_response(question, max_results=20):
 def get_web_search_results(question, start_time=5):
     res = False
     while not res:
-      try:
-        web_search_response = search_api_response(question)
-        res = True
-      except Exception as e:
-        print(e)
-        start_time += 1
-        time.sleep(start_time)
-          
+        try:
+            web_search_response = search_api_response(question)
+            res = True
+        except Exception as e:
+            print(e)
+            start_time += 1
+            time.sleep(start_time)
+    
     return web_search_response
 
 

@@ -7,7 +7,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 from scipy.special import softmax
 
-from .uncertainty_metrics import maxprob
+from ..uncertainty_metrics import maxprob
 from .evaluate import evaluate_prediction
 
 
@@ -51,7 +51,7 @@ def get_ordered_logprobs(row):
         min_logprob = min(logprob_dict.values())
         logprobs = [logprob_dict.get(str(token), min_logprob) for token in tokens]
         result.append(logprobs)
-    return resultd
+    return result
 
 
 def init_preds(preds, func):
