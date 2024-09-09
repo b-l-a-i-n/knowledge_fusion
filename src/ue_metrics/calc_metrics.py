@@ -8,8 +8,11 @@ os.environ['CUDA_VISIBLE_DEVICES']="2,3"
 import torch
 from tqdm import tqdm
 from lm_polygraph import WhiteboxModel
+from lm_polygraph.stat_calculators.stat_calculator import StatCalculator
+from lm_polygraph.stat_calculators.embeddings import get_embeddings_from_output
+from lm_polygraph.utils.dataset import Dataset
 from lm_polygraph.utils.model import WhiteboxModel, BlackboxModel, Model
-from greedy_probs import GreedyProbsCalculator
+from lm_polygraph.utils.processor import Processor
 from transformers import AutoTokenizer
 from sklearn.utils import shuffle
 from datasets import load_dataset
@@ -18,9 +21,12 @@ model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = WhiteboxModel.from_pretrained(
     model_name, device_map='auto',
-    # token='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'
 )
 
+from criteria import StopWordCriteria
+stop_words = ["\n", "QUESTION"]
+stopping_criteria = StopWordCriteria(tokenizer=tokenizer, prompts=[], stop_words=stop_words)
+from greedy_probs import GreedyProbsCalculator
 
 def convert_epsilon_to_text(d: dict):
     entity = f'{d['entity']['label']} is a {d['entity']['description']}\n'
@@ -30,13 +36,16 @@ def convert_epsilon_to_text(d: dict):
         text += label
     return text
         
-path_prefix = '../../fusion/knowledge_fusion'
+
+
+
 ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
-retrieved_ddg_path = f'{path_prefix}/data/retrieve_to_models/truthfulqa_multichoice/duck_duck_go.csv'
-retrieved_google_path = f'{path_prefix}/data/retrieve_to_models/truthfulqa_multichoice/google.csv'
-retrieved_wikipedia_path = f'{path_prefix}/data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
-retrieved_wikidata_path = f'{path_prefix}/data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
+retrieved_ddg_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/duck_duck_go.csv'
+retrieved_google_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/google.csv'
+retrieved_wikipedia_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
+retrieved_wikidata_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
 retrieved_truthful_qa_mc = pd.read_csv(retrieved_google_path)
+
 
 
 stats = []
@@ -69,8 +78,7 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
         # ddg and google
         contexts.append(row[f'context_{i}'])
     texts = [make_prompt(c, question, answers) for c in contexts]
-    # empty context
-    # texts.append(make_no_context_prompt(question, answers))
+    texts.append(make_no_context_prompt(question, answers))
     stat = {}
     for calculator in [
         GreedyProbsCalculator()
@@ -95,4 +103,4 @@ for idx, s in enumerate(stats):
                'msp': ue_metrics[idx]['msp'], 'perplexity': ue_metrics[idx]['perplexity'], 'entropy': ue_metrics[idx]['entropy']})
 
 df = pd.DataFrame(df_src)
-df.to_csv(f'{path_prefix}/data/model_answers/truthful_qa_mc/truthful_qa_multichoice_google_mistral.csv')
+df.to_csv('../../fusion/knowledge_fusion/data/model_answers/truthful_qa_mc/truthful_qa_multichoice_google_mistral.csv')
