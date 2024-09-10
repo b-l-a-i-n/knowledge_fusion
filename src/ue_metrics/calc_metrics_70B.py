@@ -36,15 +36,42 @@ def convert_epsilon_to_text(d: dict):
         label = f'{n['neighbor_label']} is a {n['neighbor_description']}\n'
         text += label
     return text
-        
+
+def generate_content(text):
+    url = "http://10.11.1.8:8000/v1/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    data = {
+            "model": "/archive/beliakin/hub/models--meta-llama--Meta-Llama-3.1-70B-Instruct/snapshots/33101ce6ccc08fa6249c10a543ebfcac65173393/",
+            "messages": [{
+            "role": "user",
+            "content": text}],
+            "max_tokens": 100,
+            "temperature": 0,
+             "logprobs": True,
+            "top_logprobs": 1,
+            }
+    
+    response = requests.post(url, headers=headers, json=data)
+    text = response.json()["choices"][0]["message"]["content"]
+    return text, response.json()["choices"][0]["logprobs"]["top_logprobs"]
+
+def calc_entropy(logprobs):
+    entropies = []
+    for s_lp in logprobs:
+        entropies.append([])
+        for lp in s_lp:
+            mask = ~np.isinf(lp)
+            entropies[-1].append(-np.sum(np.array(lp[mask]) * np.exp(lp[mask])))
+    return entropies
+
 
 ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
 retrieved_ddg_path = '../../data/retrieve_to_models/truthfulqa_multichoice/duckduckgo.csv'
 retrieved_google_path = '../../data/retrieve_to_models/truthfulqa_multichoice/google.csv'
 retrieved_wikipedia_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
 retrieved_wikidata_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
-retrieved_truthful_qa_mc = pd.read_csv(retrieved_google_path)
-retrieved_truthful_qa_mc_add = = pd.read_csv(retrieved_ddg_path)
+retrieved_truthful_qa_mc = pd.read_csv(retrieved_ddg_path)
+retrieved_truthful_qa_mc_add = = pd.read_csv(retrieved_google_path)
 
 
 stats = []
@@ -93,15 +120,17 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
     
     # for empty context
     # texts.append(make_no_context_prompt(question, answers))
-    stat = {}
-    for calculator in [
-        GreedyProbsCalculator()
-    ]:
-        stat.update(calculator(stat, texts, model))    
-    log_likelihoods = stat['greedy_log_likelihoods']
-    msp = np.array([-np.sum(log_likelihood) for log_likelihood in log_likelihoods])
-    perplexity = np.array([-np.mean(ll) for ll in log_likelihoods])
-    mean_token_entropy = np.array([np.mean(e) for e in stat['entropy']])
+    cur_msp = []
+    current_perplexity = []
+    current_entropy = []
+    for text in texts:
+        generated_texts, log_likelihoods = generate_content(text)
+        msp = np.array([-np.sum(log_likelihood) for log_likelihood in log_likelihoods])
+        cur_msp.append(msp)
+        perplexity = np.array([-np.mean(ll) for ll in log_likelihoods])
+        current_perplexity.append(perplexity)
+        mean_token_entropy = np.array([np.mean(e) for e in calc_entropy(log_likelihoods)])
+        current_entropy.append(mean_token_entropy)
     stats.append(stat)
     ue_metrics.append({'msp': msp, 'perplexity': perplexity, 'entropy': mean_token_entropy})
 
@@ -117,4 +146,4 @@ for idx, s in enumerate(stats):
                'msp': ue_metrics[idx]['msp'], 'perplexity': ue_metrics[idx]['perplexity'], 'entropy': ue_metrics[idx]['entropy']})
 
 df = pd.DataFrame(df_src)
-df.to_csv('../../data/model_answers/truthful_qa_mc/truthful_qa_multichoice_google_mistral.csv')
+df.to_csv('../../data/model_answers/truthful_qa_mc/truthful_qa_multichoice_ddg_google_llama_70b.csv')
