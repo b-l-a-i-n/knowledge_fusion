@@ -4,36 +4,26 @@ from transformers.utils import logging
 from transformers import AutoModelForCausalLM
 logging.set_verbosity_error() 
 import os
+import random
 os.environ['CUDA_VISIBLE_DEVICES']="2,3"
 import torch
 from tqdm import tqdm
-from lm_polygraph import WhiteboxModel
-from lm_polygraph.stat_calculators.stat_calculator import StatCalculator
-from lm_polygraph.stat_calculators.embeddings import get_embeddings_from_output
-from lm_polygraph.utils.dataset import Dataset
-from lm_polygraph.utils.model import WhiteboxModel, BlackboxModel, Model
-from lm_polygraph.utils.processor import Processor
 from transformers import AutoTokenizer
 from sklearn.utils import shuffle
 from datasets import load_dataset
 
-model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = WhiteboxModel.from_pretrained(
-    model_name, device_map='auto',
-)
-
-from criteria import StopWordCriteria
-stop_words = ["\n", "QUESTION"]
-stopping_criteria = StopWordCriteria(tokenizer=tokenizer, prompts=[], stop_words=stop_words)
-from greedy_probs import GreedyProbsCalculator
-from prompts import combine_two_contexts. make_no_context_prompt, make_prompt
+#model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
+#from criteria import StopWordCriteria
+#stop_words = ["\n", "QUESTION"]
+#stopping_criteria = StopWordCriteria(tokenizer=tokenizer, prompts=[], stop_words=stop_words)
+#from greedy_probs import GreedyProbsCalculator
+from prompts import combine_two_contexts, make_no_context_prompt, make_prompt
 
 def convert_epsilon_to_text(d: dict):
-    entity = f'{d['entity']['label']} is a {d['entity']['description']}\n'
+    entity = f'{d["entity"]["label"]} is a {d["entity"]["description"]}\n'
     text = entity
     for n in d['neighbors']:
-        label = f'{n['neighbor_label']} is a {n['neighbor_description']}\n'
+        label = f"{n['neighbor_label']} is a {n['neighbor_description']}\n"
         text += label
     return text
 
@@ -71,7 +61,7 @@ retrieved_google_path = '../../data/retrieve_to_models/truthfulqa_multichoice/go
 retrieved_wikipedia_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
 retrieved_wikidata_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
 retrieved_truthful_qa_mc = pd.read_csv(retrieved_ddg_path)
-retrieved_truthful_qa_mc_add = = pd.read_csv(retrieved_google_path)
+retrieved_truthful_qa_mc_add = pd.read_csv(retrieved_google_path)
 
 
 stats = []
@@ -83,7 +73,7 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
     answers, labels = shuffle(ds[idx]['mc1_targets']['choices'], ds[idx]['mc1_targets']['labels'],random_state=0)
     correct_labels.append(labels)
     number_of_context = len(row.index.values) - 2
-    
+    number_of_second_context = len(retrieved_truthful_qa_mc_add.iloc[idx].index.values) - 2 
     for i in range (1, number_of_context + 1):
         # wikidata
         # if type(row[f'context_{i}']) is not str:
@@ -107,9 +97,9 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
         if type(row[f'context_{i}']) is not str:
             break
         contexts.append(row[f'context_{i}'])
-        google_index = random.randint(1, number_of_context_google)
+        google_index = random.randint(1, number_of_second_context)
         while type(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}']) is not str:
-            google_index = random.randint(1, number_of_context_google)
+            google_index = random.randint(1, number_of_second_context)
         contexts.append(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}'])
     
     # for separate contexts
