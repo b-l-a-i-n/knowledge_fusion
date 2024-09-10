@@ -27,6 +27,7 @@ from criteria import StopWordCriteria
 stop_words = ["\n", "QUESTION"]
 stopping_criteria = StopWordCriteria(tokenizer=tokenizer, prompts=[], stop_words=stop_words)
 from greedy_probs import GreedyProbsCalculator
+from prompts import combine_two_contexts. make_no_context_prompt, make_prompt
 
 def convert_epsilon_to_text(d: dict):
     entity = f'{d['entity']['label']} is a {d['entity']['description']}\n'
@@ -37,15 +38,13 @@ def convert_epsilon_to_text(d: dict):
     return text
         
 
-
-
 ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
-retrieved_ddg_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/duck_duck_go.csv'
+retrieved_ddg_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/duckduckgo.csv'
 retrieved_google_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/google.csv'
 retrieved_wikipedia_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
 retrieved_wikidata_path = '../../fusion/knowledge_fusion/data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
 retrieved_truthful_qa_mc = pd.read_csv(retrieved_google_path)
-
+retrieved_truthful_qa_mc_add = = pd.read_csv(retrieved_ddg_path)
 
 
 stats = []
@@ -61,7 +60,6 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
     for i in range (1, number_of_context + 1):
         # wikidata
         # if type(row[f'context_{i}']) is not str:
-            # print(row[f'context_{i}'])
             # break
         # text = convert_epsilon_to_text(eval(row[f'context_{i}']))
         # contexts.append(text)
@@ -76,9 +74,25 @@ for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
         #     contexts.append(ctx['context'][:500])
 
         # ddg and google
+        # contexts.append(row[f'context_{i}'])
+
+        # several contexts
+        if type(row[f'context_{i}']) is not str:
+            break
         contexts.append(row[f'context_{i}'])
-    texts = [make_prompt(c, question, answers) for c in contexts]
-    texts.append(make_no_context_prompt(question, answers))
+        google_index = random.randint(1, number_of_context_google)
+        while type(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}']) is not str:
+            google_index = random.randint(1, number_of_context_google)
+        contexts.append(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}'])
+    
+    # for separate contexts
+    # texts = [make_prompt(c, question, answers) for c in contexts]
+
+    # for united contexts
+    texts = [combine_two_contexts(contexts, question, answers)]
+    
+    # for empty context
+    # texts.append(make_no_context_prompt(question, answers))
     stat = {}
     for calculator in [
         GreedyProbsCalculator()
