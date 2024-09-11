@@ -11,7 +11,8 @@ def make_prompt(context, question,answers):
     If there is no relevant fact, rely on your knowledge or choose a more likely option.
     OPTIONS:\n"""
     for idx, a in enumerate(answers):
-        text += f'{chr(ord('A') + idx)}. {a}\n'
+        letter = chr(ord('A') + idx)
+        text += f"{letter}. {a}\n"
     text += 'ANSWER:'
     return text
 
@@ -26,7 +27,8 @@ def make_no_context_prompt(question,answers):
     QUESTION: {question}
     OPTIONS:\n"""
     for idx, a in enumerate(answers):
-        text += f'{chr(ord('A') + idx)}. {a}\n'
+        letter = chr(ord('A') + idx)
+        text += f'{letter}. {a}\n'
     text += 'ANSWER:'
     return text
 
@@ -45,7 +47,8 @@ def combine_two_contexts(contexts, question,answers):
     text += """If there is no relevant fact, rely on your knowledge or choose a more likely option.
     OPTIONS:\n"""
     for idx, a in enumerate(answers):
-        text += f'{chr(ord('A') + idx)}. {a}\n'
+        letter = chr(ord('A') + idx)
+        text += f'{letter}. {a}\n'
     text += 'ANSWER:'
     return text
     
