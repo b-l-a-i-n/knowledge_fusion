@@ -96,10 +96,9 @@ def predict(
             text = make_no_context_prompt(question, answers)
         
         stat = cache_prediction(text)
-        for s in stat:
-            s['idx'] = idx
-            s['correct'] = chr(ord('A') + correct_labels[idx].index(1))
-        stats += stat
+        stat['idx'] = idx
+        stat['correct'] = chr(ord('A') + correct_labels[idx].index(1))
+        stats.append(stat)
     
     return stats
 
@@ -128,7 +127,7 @@ def cache_prediction(text):
     logprobs = [np.array([t['logprob'] for t in tl['top_logprobs']]) for tl in token_logprobs]
     msp = calculate_msp(logprobs)
     perplexity = calculate_perplexity(logprobs)
-    mean_token_entropy = np.mean([calculate_entropy(lp) for lp in logprobs])
+    mean_token_entropy = np.mean(calculate_entropy(logprobs))
     stat = {
         'msp': msp,
         'perplexity': perplexity,
@@ -151,11 +150,15 @@ if __name__ == "__main__":
     ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
     
     stats = predict(
+        ds, zero_path=zero_path,
+    )
+    df = pd.DataFrame(stats)
+    df.to_csv(data_path / f"test_answers/{dataset_name}_zero_llama_70b.csv", index=False)
+    
+    stats = predict(
         ds, zero_path=zero_path, 
         ddg_path=ddg_path,
         # google_path=google_path,
-        # wikipedia_path=wikipedia_path,
-        # wikidata_path=wikidata_path
+        # wikipedia_path=wikipedia_path, wikidata_path=wikidata_path
     )
-    df = pd.DataFrame(stats)
-    df.to_csv(data_path / f"test_answers/{dataset_name}_ddg_llama_70b.csv", index=False)
+    
