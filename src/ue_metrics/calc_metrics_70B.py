@@ -1,51 +1,109 @@
+
+import os
+import requests
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from transformers.utils import logging
-from transformers import AutoModelForCausalLM
-logging.set_verbosity_error() 
-import os
-import random
-os.environ['CUDA_VISIBLE_DEVICES']="2,3"
-import torch
 from tqdm import tqdm
-from transformers import AutoTokenizer
 from sklearn.utils import shuffle
 from datasets import load_dataset
+from transformers.utils import logging
+logging.set_verbosity_error() 
 
-#model_name = 'mistralai/Mistral-7B-Instruct-v0.1'
-#from criteria import StopWordCriteria
-#stop_words = ["\n", "QUESTION"]
-#stopping_criteria = StopWordCriteria(tokenizer=tokenizer, prompts=[], stop_words=stop_words)
-#from greedy_probs import GreedyProbsCalculator
-from prompts import combine_two_contexts, make_no_context_prompt, make_prompt
+from prompts import combine_two_contexts, make_no_context_prompt
+
 
 def convert_epsilon_to_text(d: dict):
-    entity = f'{d["entity"]["label"]} is a {d["entity"]["description"]}\n'
+    entity = f"Wikidata entity: {d['entity']['label']} ({d['entity']['description']})"
     text = entity
-    for n in d['neighbors']:
-        label = f"{n['neighbor_label']} is a {n['neighbor_description']}\n"
-        text += label
+    if len(d["neighbors"]) > 0:    
+        text += ", Entity properties: "
+        text += ";\n".join([f"{n['relation_label']}, {n['neighbor_label']} ({n['neighbor_description']})" for n in d['neighbors']])
+    text += "."
     return text
 
-def generate_content(text):
+
+def generate_content(prompt):
     url = "http://10.11.1.8:8000/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
     data = {
-            "model": "/archive/beliakin/hub/models--meta-llama--Meta-Llama-3.1-70B-Instruct/snapshots/33101ce6ccc08fa6249c10a543ebfcac65173393/",
-            "messages": [{
-            "role": "user",
-            "content": text}],
-            "max_tokens": 100,
-            "temperature": 0,
-             "logprobs": True,
-            "top_logprobs": 1,
-            }
+        "model": "/archive/beliakin/hub/models--meta-llama--Meta-Llama-3.1-70B-Instruct/snapshots/33101ce6ccc08fa6249c10a543ebfcac65173393/",
+        "messages": [{
+        "role": "user",
+        "content": prompt}],
+        "max_tokens": 100,
+        "temperature": 0,
+        "logprobs": True,
+        "top_logprobs": 256,
+    }
     
     response = requests.post(url, headers=headers, json=data)
     text = response.json()["choices"][0]["message"]["content"]
-    return text, response.json()["choices"][0]["logprobs"]["top_logprobs"]
+    return text, response.json()["choices"][0]["logprobs"]["content"]
 
-def calc_entropy(logprobs):
+
+def predict(
+    ds, zero_path, 
+    size_wikidata=None, 
+    size_google=250,
+    size_ddg=250,
+    size_wikipedia=250,
+    number_of_context=5, 
+    **kwargs
+):
+    zero_df = pd.read_csv(zero_path)
+    ddg_df = pd.read_csv(ddg_path) if "ddg_path" in kwargs else None
+    google_df = pd.read_csv(google_path) if "google_path" in kwargs else None
+    wikidata_df = pd.read_csv(wikidata_path) if "wikidata_path" in kwargs else None
+    wikipedia_df = pd.read_csv(wikipedia_path) if "wikipedia_path" in kwargs else None
+    
+    stats, correct_labels = [], []
+    for idx, row in tqdm(zero_df.iterrows(), total=zero_df.shape[0]):
+        question = row['question']
+        answers, labels = shuffle(
+            ds[idx]['mc1_targets']['choices'], ds[idx]['mc1_targets']['labels'],
+            random_state=0
+        )
+        correct_labels.append(labels)
+        
+        contexts = {key: [] for key in ["wikipedia", "wikidata", "ddg", "google"]}
+        for i in range (1, number_of_context + 1):
+            
+            if wikidata_df is not None and wikidata_df[f'context_{i}'].iloc[idx]:
+                if type(wikidata_df[f'context_{i}'].iloc[idx]) is str:
+                    text = convert_epsilon_to_text(eval(wikidata_df[f'context_{i}'].iloc[idx]))
+                    contexts["wikidata"].append(text[:size_wikidata])
+            
+            if wikipedia_df is not None and wikipedia_df[f'context_{i}'].iloc[idx]:
+                ctx = eval(wikipedia_df[f'context_{i}'].iloc[idx])
+                if len(ctx) > 0:
+                    contexts["wikipedia"].append(ctx['context'][:size_wikipedia])
+            
+            if ddg_df is not None and ddg_df[f'context_{i}'].iloc[idx]:
+                contexts["ddg"].append(ddg_df[f'context_{i}'].iloc[idx][:size_ddg])
+            
+            if google_df is not None and google_df[f'context_{i}'].iloc[idx]:
+                contexts["google"].append(google_df[f'context_{i}'].iloc[idx][:size_google])
+                        
+        if any(contexts.values()):
+            joint_context = [
+                "\n".join(["- " + s.replace("\n", " ") + "..." for s in c]) 
+                for c in contexts.values() if c
+            ]
+            text = combine_two_contexts(joint_context, question, answers)
+        else:
+            text = make_no_context_prompt(question, answers)
+        
+        stat = cache_prediction(text)
+        stat['idx'] = idx
+        stat['correct'] = chr(ord('A') + correct_labels[idx].index(1))
+        stats.append(stat)
+    
+    return stats
+
+
+def calculate_entropy(logprobs):
     entropies = []
     for s_lp in logprobs:
         entropies.append([])
@@ -55,85 +113,52 @@ def calc_entropy(logprobs):
     return entropies
 
 
-ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
-retrieved_ddg_path = '../../data/retrieve_to_models/truthfulqa_multichoice/duckduckgo.csv'
-retrieved_google_path = '../../data/retrieve_to_models/truthfulqa_multichoice/google.csv'
-retrieved_wikipedia_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikipedia.csv'
-retrieved_wikidata_path = '../../data/retrieve_to_models/truthfulqa_multichoice/wikidata.csv'
-retrieved_truthful_qa_mc = pd.read_csv(retrieved_ddg_path)
-retrieved_truthful_qa_mc_add = pd.read_csv(retrieved_google_path)
+def calculate_msp(token_logprobs):
+    return -np.sum([logprobs[0] for logprobs in token_logprobs])
 
 
-stats = []
-ue_metrics = []
-correct_labels = []
-for idx, row in tqdm(retrieved_truthful_qa_mc.iterrows()):
-    question = row['question']
-    contexts = []
-    answers, labels = shuffle(ds[idx]['mc1_targets']['choices'], ds[idx]['mc1_targets']['labels'],random_state=0)
-    correct_labels.append(labels)
-    number_of_context = len(row.index.values) - 2
-    number_of_second_context = len(retrieved_truthful_qa_mc_add.iloc[idx].index.values) - 2 
-    for i in range (1, number_of_context + 1):
-        # wikidata
-        # if type(row[f'context_{i}']) is not str:
-            # break
-        # text = convert_epsilon_to_text(eval(row[f'context_{i}']))
-        # contexts.append(text)
+def calculate_perplexity(token_logprobs):
+    sum_logprobs = np.sum([logprobs[0] for logprobs in token_logprobs])
+    return -(sum_logprobs / len(token_logprobs))
         
-        # wikipedia
-        # ctx = eval(row[f'context_{i}'])
-        # if len(ctx) == 0:
-        #     continue
-        # elif ctx['is_summary'] is True:
-        #     contexts.append(ctx['context'])
-        # else:
-        #     contexts.append(ctx['context'][:500])
+        
+def cache_prediction(text):
+    generated_texts, token_logprobs = generate_content(text)
+    logprobs = [np.array([t['logprob'] for t in tl['top_logprobs']]) for tl in token_logprobs]
+    msp = calculate_msp(logprobs)
+    perplexity = calculate_perplexity(logprobs)
+    mean_token_entropy = np.mean(calculate_entropy(logprobs))
+    stat = {
+        'msp': msp,
+        'perplexity': perplexity,
+        'entropy': mean_token_entropy,
+        'text': generated_texts,
+        'logprobs': token_logprobs,
+    }
+    return stat
 
-        # ddg and google
-        # contexts.append(row[f'context_{i}'])
 
-        # several contexts
-        if type(row[f'context_{i}']) is not str:
-            break
-        contexts.append(row[f'context_{i}'])
-        google_index = random.randint(1, number_of_second_context)
-        while type(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}']) is not str:
-            google_index = random.randint(1, number_of_second_context)
-        contexts.append(retrieved_truthful_qa_mc_add.iloc[idx][f'context_{google_index}'])
+if __name__ == "__main__":    
+    data_path = Path(os.getenv("DATA_PATH", "../../data"))
+    dataset_name = Path("truthfulqa_multichoice")
     
-    # for separate contexts
-    # texts = [make_prompt(c, question, answers) for c in contexts]
-
-    # for united contexts
-    texts = [combine_two_contexts(contexts, question, answers)]
+    zero_path = data_path / dataset_name / "questions.csv"
+    ddg_path = data_path / dataset_name / "duckduckgo.csv"
+    google_path = data_path / dataset_name / "google.csv"
+    wikipedia_path = data_path / dataset_name / "wikipedia.csv"
+    wikidata_path = data_path / dataset_name / "wikidata.csv"
+    ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice")['validation']
     
-    # for empty context
-    # texts.append(make_no_context_prompt(question, answers))
-    cur_msp = []
-    current_perplexity = []
-    current_entropy = []
-    for text in texts:
-        generated_texts, log_likelihoods = generate_content(text)
-        msp = np.array([-np.sum(log_likelihood) for log_likelihood in log_likelihoods])
-        cur_msp.append(msp)
-        perplexity = np.array([-np.mean(ll) for ll in log_likelihoods])
-        current_perplexity.append(perplexity)
-        mean_token_entropy = np.array([np.mean(e) for e in calc_entropy(log_likelihoods)])
-        current_entropy.append(mean_token_entropy)
-    stats.append(stat)
-    ue_metrics.append({'msp': msp, 'perplexity': perplexity, 'entropy': mean_token_entropy})
-
-df_src = []
-for idx, s in enumerate(stats):
-    answers = ''
-    for v in s['greedy_texts']:
-        # mistral
-        answers += v[0]
-        # llama
-        answer += v.strip()
-    df_src.append({'idx': idx, 'correct': chr(ord('A') + correct_labels[idx].index(1)), 'answers': answers,
-               'msp': ue_metrics[idx]['msp'], 'perplexity': ue_metrics[idx]['perplexity'], 'entropy': ue_metrics[idx]['entropy']})
-
-df = pd.DataFrame(df_src)
-df.to_csv('../../data/model_answers/truthful_qa_mc/truthful_qa_multichoice_ddg_google_llama_70b.csv')
+    stats = predict(
+        ds, zero_path=zero_path,
+    )
+    df = pd.DataFrame(stats)
+    df.to_csv(data_path / f"test_answers/{dataset_name}_zero_llama_70b.csv", index=False)
+    
+    stats = predict(
+        ds, zero_path=zero_path, 
+        ddg_path=ddg_path,
+        # google_path=google_path,
+        # wikipedia_path=wikipedia_path, wikidata_path=wikidata_path
+    )
+    
